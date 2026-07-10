@@ -1,13 +1,16 @@
-name: Telegram Auto Vote
+name:  Auto Vote
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
+    # Starts once at 8:55 PM Bangladesh time (UTC+6) = 14:55 UTC,
+    # 5 minutes early so the connection is ready before 9:00 PM.
+    - cron: "55 14 * * *"
   workflow_dispatch: {}     # allows manual run from GitHub UI
 
 jobs:
   vote:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -18,14 +21,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run vote check
+      - name: Write today's target option
+        run: echo "${{ vars.TARGET_OPTION }}" > target-option.txt
+
+      - name: Listen for polls in real time for 30 minutes
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           SESSION_STRING: ${{ secrets.SESSION_STRING }}
           CHAT_ID: ${{ vars.CHAT_ID }}
-          TARGET_OPTION: ${{ vars.TARGET_OPTION }}
-        run: node vote-bot.js
+        run: timeout 1800 node realtime-vote.js || true
+        # 1800 seconds = 30 minutes, covers 8:55-9:25 PM (9:00-9:20 plus buffer).
+        # "|| true" because `timeout` exits with code 124 when the time
+        # limit is reached - that's expected, not a failure.
 
       - name: Commit voted-polls.json if changed
         run: |

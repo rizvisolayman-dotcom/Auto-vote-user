@@ -1,0 +1,40 @@
+name: Telegram Auto Vote
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch: {}     # allows manual run from GitHub UI
+
+jobs:
+  vote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run vote check
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          SESSION_STRING: ${{ secrets.SESSION_STRING }}
+          CHAT_ID: ${{ vars.CHAT_ID }}
+          TARGET_OPTION: ${{ vars.TARGET_OPTION }}
+        run: node vote-bot.js
+
+      - name: Commit voted-polls.json if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- voted-polls.json; then
+            git add voted-polls.json
+            git commit -m "Update voted polls log [skip ci]"
+            git push
+          else
+            echo "No changes to commit."
+          fi

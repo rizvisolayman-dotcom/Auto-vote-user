@@ -6,10 +6,12 @@
   "type": "commonjs",
   "scripts": {
     "generate-session": "node generate-session.js",
-    "vote": "node vote-bot.js"
+    "vote": "node vote-bot.js",
+    "run": "node vote-all-safe.js"
   },
   "dependencies": {
-    "telegram": "^2.22.2",
-    "input": "^1.0.1"
+    "input": "^1.0.1",
+    "libsodium-wrappers": "^0.8.4",
+    "telegram": "^2.26.22"
   }
 }

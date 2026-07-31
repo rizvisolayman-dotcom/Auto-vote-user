@@ -146,4 +146,30 @@ if (require.main === module) {
   setInterval(checkAndVote, 5000);
 }
 
-module.exports = { voteAll, voteEach };
+async function findLatestPoll() {
+  const accs = freshAccounts();
+  for (const acc of accs) {
+    try {
+      const c = new TelegramClient(new StringSession(acc.s), API_ID, API_HASH, { connectionRetries: 3, autoReconnect: false });
+      await c.connect();
+      const msgs = await c.getMessages(CHAT_ID, { limit: 30 });
+      let found = null;
+      for (const m of msgs) {
+        let isPoll = false, pollId = null;
+        if (m.media && m.media.className === 'MessageMediaPoll') { isPoll = true; pollId = m.media.poll.id.toString(); }
+        else if (m.media && m.media.className === 'MessageMediaUnsupported') {
+          try {
+            const r = await c.invoke(new Api.messages.GetPollResults({ peer: CHAT_ID, msgId: m.id }));
+            if (r?.updates?.[0]?.pollId) { isPoll = true; pollId = r.updates[0].pollId.toString(); }
+          } catch {}
+        }
+        if (isPoll) { found = { msgId: m.id, pollId }; break; }
+      }
+      await c.disconnect();
+      if (found) return found;
+    } catch {}
+  }
+  return null;
+}
+
+module.exports = { voteAll, voteEach, findLatestPoll };

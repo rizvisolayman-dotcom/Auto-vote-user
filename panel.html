@@ -49,6 +49,20 @@
   <div class="status" id="status">Loading accounts...</div>
 
   <div class="add-section">
+    <h2>Auto Vote Schedule</h2>
+    <div class="sub" style="text-align:left;margin-bottom:12px">Set a time window — when a poll appears in that window, it votes automatically with the options selected above.</div>
+    <div class="add-row">
+      <input id="inpStart" type="time" value="09:00">
+      <span style="color:#94a3b8;line-height:44px">to</span>
+      <input id="inpEnd" type="time" value="09:20">
+      <button class="btn btn-add" id="btnSched">Start Schedule</button>
+      <button class="btn btn-own" id="btnSchedStop" style="display:none">Stop</button>
+    </div>
+    <div class="status" id="schedStatus">No schedule</div>
+    <div class="add-hint">Option per account: use the dropdowns above (or "Own Vote" default = each account votes its own number). Checks every 10s during the window.</div>
+  </div>
+
+  <div class="add-section">
     <h2>Add New Account</h2>
     <div class="add-row">
       <input id="inpPhone" type="tel" placeholder="+8801XXXXXXXXX">
@@ -225,6 +239,64 @@ btnPw.onclick = async () => {
 
 loadAccounts();
 setStatus('Ready', 'done');
+
+const inpStart = document.getElementById('inpStart');
+const inpEnd = document.getElementById('inpEnd');
+const btnSched = document.getElementById('btnSched');
+const btnSchedStop = document.getElementById('btnSchedStop');
+const schedStatus = document.getElementById('schedStatus');
+
+function setSched(text, cls) {
+  schedStatus.textContent = text;
+  schedStatus.className = 'status ' + (cls || '');
+}
+
+async function loadSchedule() {
+  try {
+    const r = await fetch('/schedule');
+    const d = await r.json();
+    if (d.schedule) {
+      inpStart.value = d.schedule.start || '09:00';
+      inpEnd.value = d.schedule.end || '09:20';
+      btnSched.style.display = 'none';
+      btnSchedStop.style.display = 'block';
+      setSched('Schedule active: ' + d.schedule.start + ' - ' + d.schedule.end + (d.lastPollId ? ' (last poll: ' + d.lastPollId + ')' : ''), 'done');
+    } else {
+      setSched('No schedule', '');
+    }
+  } catch (e) { setSched('Failed to load schedule', 'error'); }
+}
+
+btnSched.onclick = async () => {
+  const start = inpStart.value;
+  const end = inpEnd.value;
+  if (!start || !end) { setSched('Set start and end time', 'error'); return; }
+  const sels = document.querySelectorAll('#accList select');
+  const options = Array.from(sels).map(s => parseInt(s.value, 10));
+  setSched('Scheduling ' + start + ' - ' + end + '...', 'loading');
+  btnSched.disabled = true;
+  try {
+    const r = await fetch('/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start, end, options }) });
+    const d = await r.json();
+    if (d.error) { setSched('Error: ' + d.error, 'error'); return; }
+    btnSched.style.display = 'none';
+    btnSchedStop.style.display = 'block';
+    setSched('Schedule active: ' + start + ' - ' + end + ' (options: ' + options.join(',') + ')', 'done');
+  } catch (e) {
+    setSched('Error: ' + e.message, 'error');
+  } finally { btnSched.disabled = false; }
+};
+
+btnSchedStop.onclick = async () => {
+  try {
+    await fetch('/schedule-stop', { method: 'POST' });
+    btnSched.style.display = 'block';
+    btnSchedStop.style.display = 'none';
+    setSched('Schedule stopped', '');
+  } catch (e) { setSched('Error: ' + e.message, 'error'); }
+};
+
+loadSchedule();
 </script>
 </body>
 </html>

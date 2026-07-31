@@ -2,8 +2,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { voteAll, voteEach } = require('./userbot.js');
-let { accounts } = require('./load-config.js');
+const { accounts } = require('./load-config.js');
 const { startLogin, submitCode, submitPassword } = require('./add-api.js');
+const scheduler = require('./scheduler.js');
 
 const PORT = process.env.PORT || 8080;
 let voting = false;
@@ -55,6 +56,31 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(loadHtml());
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/schedule') {
+    json(res, 200, scheduler.getStatus());
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/schedule') {
+    try {
+      const b = await readBody(req);
+      const r = scheduler.setSchedule(b.start, b.end, b.options, b.defaultOption);
+      json(res, 200, r);
+    } catch (e) { json(res, 500, { error: e.message }); }
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/schedule-stop') {
+    json(res, 200, scheduler.stopSchedule());
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/schedule-check') {
+    const r = await scheduler.checkOnce();
+    json(res, 200, r || { ok: true });
     return;
   }
 
@@ -138,4 +164,7 @@ const server = http.createServer(async (req, res) => {
   json(res, 404, { error: 'not found' });
 });
 
-server.listen(PORT, () => console.log('Vote panel running on http://localhost:' + PORT));
+server.listen(PORT, () => {
+  console.log('Vote panel running on http://localhost:' + PORT);
+  scheduler.start();
+});

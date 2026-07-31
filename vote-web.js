@@ -4,6 +4,7 @@ const path = require('path');
 const { voteAll, voteEach } = require('./userbot.js');
 const { accounts } = require('./load-config.js');
 const { startLogin, submitCode, submitPassword } = require('./add-api.js');
+const { listGroups, changeChatId } = require('./chat-api.js');
 const scheduler = require('./scheduler.js');
 
 const PORT = process.env.PORT || 8080;
@@ -86,6 +87,25 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url === '/accounts') {
     json(res, 200, { accounts: getAccounts() });
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/groups') {
+    try {
+      const cfg = require('./load-config.js');
+      const groups = await listGroups();
+      json(res, 200, { groups, current: String(cfg.CHAT_ID) });
+    } catch (e) { json(res, 500, { error: e.message }); }
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/chat') {
+    try {
+      const { chatId } = await readBody(req);
+      if (!chatId) { json(res, 400, { error: 'chatId required' }); return; }
+      const r = await changeChatId(chatId);
+      json(res, 200, r);
+    } catch (e) { json(res, 500, { error: e.message }); }
     return;
   }
 

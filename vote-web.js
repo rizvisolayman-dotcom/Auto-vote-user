@@ -68,7 +68,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url === '/schedule') {
     try {
       const b = await readBody(req);
-      const r = scheduler.setSchedule(b.start, b.end, b.options, b.defaultOption);
+      const r = scheduler.setSchedule(b.start, b.end, b.options, b.defaultOption, b.tzOffset);
       json(res, 200, r);
     } catch (e) { json(res, 500, { error: e.message }); }
     return;

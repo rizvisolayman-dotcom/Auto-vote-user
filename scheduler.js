@@ -55,7 +55,10 @@ function timeToMin(t) {
 
 function inWindow(now) {
   if (!schedule) return false;
-  const cur = now.getHours() * 60 + now.getMinutes();
+  const tzOffset = parseInt(schedule.tzOffset, 10);
+  const offset = isNaN(tzOffset) ? 0 : tzOffset;
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const cur = (utcMin + offset + 1440) % 1440;
   const s = timeToMin(schedule.start);
   const e = timeToMin(schedule.end);
   if (s === null || e === null) return false;
@@ -64,8 +67,8 @@ function inWindow(now) {
   return cur >= s || cur <= e;
 }
 
-function setSchedule(start, end, options, defaultOption) {
-  schedule = { start, end, options, defaultOption };
+function setSchedule(start, end, options, defaultOption, tzOffset) {
+  schedule = { start, end, options, defaultOption, tzOffset };
   lastPollId = null;
   saveState();
   return { ok: true, schedule };

@@ -290,7 +290,7 @@ btnSched.onclick = async () => {
   setSched('Scheduling ' + start + ' - ' + end + '...', 'loading');
   btnSched.disabled = true;
   try {
-    const r = await fetch('/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start, end, options }) });
+    const r = await fetch('/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start, end, options, tzOffset: -new Date().getTimezoneOffset() }) });
     const d = await r.json();
     if (d.error) { setSched('Error: ' + d.error, 'error'); return; }
     btnSched.style.display = 'none';

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Vote Panel</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; justify-content: center; padding: 30px 15px; }
+  .card { background: #1e293b; border-radius: 16px; padding: 30px; width: 100%; max-width: 680px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 26px; }
+  .sub { text-align: center; color: #94a3b8; margin-bottom: 24px; font-size: 13px; }
+  .acc { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #0f172a; border-radius: 10px; margin-bottom: 8px; border: 1px solid #334155; }
+  .acc .n { color: #38bdf8; font-weight: 700; margin-right: 10px; }
+  .acc .nm { flex: 1; }
+  .acc select { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px; padding: 6px 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .acc .count { color: #22c55e; font-weight: 700; min-width: 62px; text-align: right; }
+  .acc.failed { border-color: #ef4444; }
+  .acc.failed .count { color: #ef4444; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn { flex: 1; padding: 13px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .btn-vote { background: #22c55e; color: #052e16; }
+  .btn-vote:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+  .btn-own { background: #f59e0b; color: #451a03; }
+  .btn-own:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+  .status { margin-top: 18px; padding: 14px; border-radius: 10px; background: #0f172a; border: 1px solid #334155; min-height: 44px; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .status.loading { color: #38bdf8; }
+  .status.done { color: #22c55e; }
+  .status.error { color: #ef4444; }
+  .add-section { margin-top: 26px; padding-top: 22px; border-top: 1px solid #334155; }
+  .add-section h2 { font-size: 17px; margin-bottom: 12px; color: #94a3b8; }
+  .add-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .add-row input { flex: 1; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px; padding: 11px 12px; font-size: 14px; }
+  .add-row input:focus { outline: none; border-color: #38bdf8; }
+  .btn-add { background: #38bdf8; color: #082f49; }
+  .btn-add:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; }
+  .add-hint { color: #64748b; font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Auto Vote Panel</h1>
+  <div class="sub">Pick an option for each account, then vote</div>
+  <div id="accList"></div>
+  <div class="actions">
+    <button class="btn btn-vote" id="btnVote">Vote Selected</button>
+    <button class="btn btn-own" id="btnOwn">Own Vote (auto)</button>
+  </div>
+  <div class="status" id="status">Loading accounts...</div>
+
+  <div class="add-section">
+    <h2>Add New Account</h2>
+    <div class="add-row">
+      <input id="inpPhone" type="tel" placeholder="+8801XXXXXXXXX">
+      <button class="btn btn-add" id="btnSend">Send Code</button>
+    </div>
+    <div class="add-row" id="codeRow" style="display:none">
+      <input id="inpCode" type="text" placeholder="Enter login code">
+      <button class="btn btn-add" id="btnCode">Confirm</button>
+    </div>
+    <div class="add-row" id="pwRow" style="display:none">
+      <input id="inpPw" type="password" placeholder="Enter 2FA password">
+      <button class="btn btn-add" id="btnPw">Confirm</button>
+    </div>
+    <div class="add-hint">Code is sent to Telegram. After login, the account is added automatically.</div>
+  </div>
+</div>
+<script>
+let addId = null;
+
+const accList = document.getElementById('accList');
+const status = document.getElementById('status');
+const btnVote = document.getElementById('btnVote');
+const btnOwn = document.getElementById('btnOwn');
+const inpPhone = document.getElementById('inpPhone');
+const btnSend = document.getElementById('btnSend');
+const codeRow = document.getElementById('codeRow');
+const inpCode = document.getElementById('inpCode');
+const btnCode = document.getElementById('btnCode');
+const pwRow = document.getElementById('pwRow');
+const inpPw = document.getElementById('inpPw');
+const btnPw = document.getElementById('btnPw');
+
+async function loadAccounts() {
+  try {
+    const r = await fetch('/accounts');
+    const d = await r.json();
+    renderAccounts(d.accounts || []);
+  } catch (e) {
+    setStatus('Failed to load accounts: ' + e.message, 'error');
+  }
+}
+
+function renderAccounts(names) {
+  accList.innerHTML = '';
+  names.forEach((name, i) => {
+    const parts = name.split(' ');
+    const num = parts[0].replace('#', '');
+    const nm = parts.slice(1).join(' ');
+    const d = document.createElement('div');
+    d.className = 'acc';
+    d.id = 'acc-' + i;
+    d.innerHTML = '<span class="n">#' + num + '</span><span class="nm">' + nm + '</span>' +
+      '<select id="sel-' + i + '"></select><span class="count">...</span>';
+    const sel = d.querySelector('select');
+    for (let o = 2; o <= 12; o++) {
+      const op = document.createElement('option');
+      op.value = o; op.textContent = o;
+      if (o === parseInt(num, 10)) op.selected = true;
+      sel.appendChild(op);
+    }
+    accList.appendChild(d);
+  });
+}
+
+function setStatus(text, cls) {
+  status.textContent = text;
+  status.className = 'status ' + (cls || '');
+}
+
+function markResults(results) {
+  document.querySelectorAll('.acc').forEach((el, i) => {
+    const r = results[i] || '';
+    const failed = /failed/i.test(r);
+    el.className = 'acc' + (failed ? ' failed' : '');
+    el.querySelector('.count').textContent = failed ? 'FAILED' : 'VOTED';
+  });
+  const nl = String.fromCharCode(10);
+  setStatus('Done' + nl + results.join(nl), results.some(r => /failed/i.test(r)) ? 'error' : 'done');
+}
+
+btnVote.onclick = async () => {
+  const sels = document.querySelectorAll('#accList select');
+  const options = Array.from(sels).map(s => parseInt(s.value, 10));
+  setStatus('Voting...', 'loading');
+  btnVote.disabled = true; btnOwn.disabled = true;
+  try {
+    const r = await fetch('/vote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ options }) });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'error'); return; }
+    const res = (d.result || '').split(/[,|]/).map(s => s.trim()).filter(Boolean);
+    markResults(res);
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'error');
+  } finally {
+    btnVote.disabled = false; btnOwn.disabled = false;
+  }
+};
+
+btnOwn.onclick = async () => {
+  setStatus('Own vote running...', 'loading');
+  btnVote.disabled = true; btnOwn.disabled = true;
+  try {
+    const r = await fetch('/vote-own', { method: 'POST' });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'error'); return; }
+    markResults(d.results || []);
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'error');
+  } finally {
+    btnVote.disabled = false; btnOwn.disabled = false;
+  }
+};
+
+btnSend.onclick = async () => {
+  const phone = inpPhone.value.trim();
+  if (!phone) { setStatus('Enter phone number', 'error'); return; }
+  setStatus('Sending code to ' + phone + '...', 'loading');
+  btnSend.disabled = true;
+  try {
+    const r = await fetch('/add-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'error'); return; }
+    addId = d.add_id;
+    setStatus(d.message, 'loading');
+    codeRow.style.display = 'flex';
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'error');
+  } finally { btnSend.disabled = false; }
+};
+
+btnCode.onclick = async () => {
+  const code = inpCode.value.trim();
+  if (!code || !addId) { setStatus('Enter the code', 'error'); return; }
+  setStatus('Verifying...', 'loading');
+  btnCode.disabled = true;
+  try {
+    const r = await fetch('/add-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ add_id: addId, code }) });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'error'); btnCode.disabled = false; return; }
+    if (d.needs_password) {
+      pwRow.style.display = 'flex';
+      setStatus(d.message, 'loading');
+      btnCode.disabled = false;
+      return;
+    }
+    setStatus(d.message + ' - account added!', 'done');
+    codeRow.style.display = 'none'; pwRow.style.display = 'none';
+    inpPhone.value = ''; inpCode.value = ''; addId = null;
+    loadAccounts();
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'error');
+    btnCode.disabled = false;
+  }
+};
+
+btnPw.onclick = async () => {
+  const password = inpPw.value;
+  if (!password || !addId) { setStatus('Enter 2FA password', 'error'); return; }
+  setStatus('Verifying password...', 'loading');
+  btnPw.disabled = true;
+  try {
+    const r = await fetch('/add-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ add_id: addId, password }) });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'error'); btnPw.disabled = false; return; }
+    setStatus(d.message + ' - account added!', 'done');
+    codeRow.style.display = 'none'; pwRow.style.display = 'none';
+    inpPhone.value = ''; inpCode.value = ''; inpPw.value = ''; addId = null;
+    loadAccounts();
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'error');
+    btnPw.disabled = false;
+  }
+};
+
+loadAccounts();
+setStatus('Ready', 'done');
+</script>
+</body>
+</html>

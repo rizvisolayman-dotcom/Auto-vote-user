@@ -4,6 +4,7 @@ const { Api } = require('telegram');
 const { computeCheck } = require('telegram/Password');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 const { API_ID, API_HASH } = require('./load-config.js');
 const CONFIG = path.join(__dirname, 'config.js');
@@ -12,18 +13,64 @@ const pending = {};
 
 function cleanPhone(p) { return (p || '').replace(/[^0-9+]/g, ''); }
 
-function nextNumber() {
-  const cfg = fs.readFileSync(CONFIG, 'utf8');
-  const nums = [...cfg.matchAll(/n:'#(\d+)/g)].map(m => parseInt(m[1], 10));
+function nextNumber(accounts) {
+  const nums = accounts.map(a => parseInt((a.n || '').match(/#(\d+)/)?.[1] || 0, 10));
   return Math.max(2, ...nums) + 1;
 }
 
-function appendAccount(name, session) {
-  const num = nextNumber();
-  const line = `  {n:'#${num} ${name}', s:'${session}'},\n`;
-  let cfg = fs.readFileSync(CONFIG, 'utf8');
-  cfg = cfg.replace(/\n\];\n\nconst API_ID/, '\n' + line + '];\n\nconst API_ID');
-  fs.writeFileSync(CONFIG, cfg);
+function renderApi(method, path, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL('https://api.render.com/v1' + path);
+    const opts = {
+      hostname: u.hostname, port: 443, path: u.pathname + u.search,
+      method,
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + process.env.RENDER_API_KEY },
+    };
+    const r = https.request(opts, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => { try { resolve({ status: res.statusCode, data: JSON.parse(d) }); } catch (e) { resolve({ status: res.statusCode, raw: d }); } });
+    });
+    r.on('error', reject);
+    if (body) r.write(JSON.stringify(body));
+    r.end();
+  });
+}
+
+async function updateRenderConfig(accounts) {
+  const cfg = {
+    accounts,
+    API_ID,
+    API_HASH,
+    CHAT_ID: process.env.CHAT_ID || require('./load-config.js').CHAT_ID,
+  };
+  const r = await renderApi('PUT', '/services/' + process.env.RENDER_SERVICE_ID + '/env-vars/VOTE_CONFIG', { value: JSON.stringify(cfg) });
+  if (r.status !== 200) throw new Error('Render config update failed: ' + JSON.stringify(r.data || r.raw).substring(0, 120));
+  return true;
+}
+
+async function appendAccount(name, session) {
+  let accounts;
+  if (fs.existsSync(CONFIG)) {
+    accounts = require('./load-config.js').accounts;
+  } else {
+    accounts = JSON.parse(process.env.VOTE_CONFIG).accounts;
+  }
+  const num = nextNumber(accounts);
+  const newAcc = { n: '#' + num + ' ' + name, s: session };
+  accounts = accounts.concat([newAcc]);
+
+  if (fs.existsSync(CONFIG)) {
+    const line = `  {n:'#${num} ${name}', s:'${session}'},\n`;
+    let cfg = fs.readFileSync(CONFIG, 'utf8');
+    cfg = cfg.replace(/\n\];\n\nconst API_ID/, '\n' + line + '];\n\nconst API_ID');
+    fs.writeFileSync(CONFIG, cfg);
+  }
+
+  if (process.env.RENDER_SERVICE_ID) {
+    await updateRenderConfig(accounts);
+  }
   return { number: num, name };
 }
 

@@ -358,8 +358,7 @@ btnGroup.onclick = async () => {
     const r = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId: id }) });
     const d = await r.json();
     if (d.error) { setGroupStatus('Error: ' + d.error, 'error'); return; }
-    setGroupStatus('Switched! Voting now targets group ' + d.chatId, 'done');
-    await loadGroups(true);
+    setGroupStatus('Switched! Redeploying (~2 min)... refresh the page after a few minutes to see the new current group', 'done');
   } catch (e) {
     setGroupStatus('Error: ' + e.message, 'error');
   } finally { btnGroup.disabled = false; }

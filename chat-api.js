@@ -34,6 +34,22 @@ function renderApi(method, p, body) {
   });
 }
 
+async function cancelPendingDeploys(sid) {
+  const r = await renderApi('GET', '/services/' + sid + '/deploys');
+  if (!r.data || !Array.isArray(r.data)) return;
+  for (const d of r.data) {
+    const s = d.deploy && d.deploy.status;
+    if (s === 'queued' || s === 'created' || s === 'build_in_progress' || s === 'deploy_in_progress' || s === 'update_in_progress') {
+      await renderApi('POST', '/services/' + sid + '/deploys/' + d.deploy.id + '/cancel', {});
+    }
+  }
+}
+
+async function triggerDeploy(sid) {
+  await cancelPendingDeploys(sid);
+  await renderApi('POST', '/services/' + sid + '/deploys', {});
+}
+
 async function listGroups() {
   const cfg = require('./load-config.js');
   const acc = cfg.accounts[0];
@@ -68,7 +84,7 @@ async function changeChatId(newId) {
     };
     const r = await renderApi('PUT', '/services/' + process.env.RENDER_SERVICE_ID + '/env-vars/VOTE_CONFIG', { value: JSON.stringify(payload) });
     if (r.status !== 200) throw new Error('Render update failed: ' + JSON.stringify(r.data || r.raw).substring(0, 100));
-    await renderApi('POST', '/services/' + process.env.RENDER_SERVICE_ID + '/deploys', {});
+    await triggerDeploy(process.env.RENDER_SERVICE_ID);
   }
   return { ok: true, chatId: String(newId) };
 }

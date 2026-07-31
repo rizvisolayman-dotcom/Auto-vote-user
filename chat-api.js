@@ -68,6 +68,7 @@ async function changeChatId(newId) {
     };
     const r = await renderApi('PUT', '/services/' + process.env.RENDER_SERVICE_ID + '/env-vars/VOTE_CONFIG', { value: JSON.stringify(payload) });
     if (r.status !== 200) throw new Error('Render update failed: ' + JSON.stringify(r.data || r.raw).substring(0, 100));
+    await renderApi('POST', '/services/' + process.env.RENDER_SERVICE_ID + '/deploys', {});
   }
   return { ok: true, chatId: String(newId) };
 }

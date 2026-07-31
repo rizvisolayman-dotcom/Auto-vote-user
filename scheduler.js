@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const { voteAll, voteEach, findLatestPoll } = require('./userbot.js');
 
 const STATE = path.join(__dirname, 'schedule-state.json');
@@ -7,11 +8,38 @@ const STATE = path.join(__dirname, 'schedule-state.json');
 let schedule = null;
 let lastPollId = null;
 
+function renderApi(method, p, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL('https://api.render.com/v1' + p);
+    const opts = {
+      hostname: u.hostname, port: 443, path: u.pathname + u.search,
+      method,
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + process.env.RENDER_API_KEY },
+    };
+    const r = https.request(opts, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => resolve(res.statusCode));
+    });
+    r.on('error', reject);
+    if (body) r.write(JSON.stringify(body));
+    r.end();
+  });
+}
+
 function loadState() {
+  try {
+    if (process.env.SCHEDULE_STATE) return JSON.parse(process.env.SCHEDULE_STATE);
+  } catch {}
   try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return {}; }
 }
 function saveState() {
-  try { fs.writeFileSync(STATE, JSON.stringify({ schedule, lastPollId })); } catch {}
+  const st = { schedule, lastPollId };
+  try { fs.writeFileSync(STATE, JSON.stringify(st)); } catch {}
+  if (process.env.RENDER_SERVICE_ID && process.env.RENDER_API_KEY) {
+    renderApi('PUT', '/services/' + process.env.RENDER_SERVICE_ID + '/env-vars/SCHEDULE_STATE', { value: JSON.stringify(st) }).catch(() => {});
+  }
 }
 
 const st = loadState();

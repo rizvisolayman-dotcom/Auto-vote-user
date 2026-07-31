@@ -63,6 +63,20 @@
   </div>
 
   <div class="add-section">
+    <h2>Vote Group</h2>
+    <div class="sub" style="text-align:left;margin-bottom:12px">Choose which group gets the votes. Current group is marked — selecting another switches voting to it.</div>
+    <div class="add-row">
+      <select id="selGroup" style="flex:1;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:8px;padding:11px 12px;font-size:14px">
+        <option value="">Loading groups...</option>
+      </select>
+      <button class="btn btn-add" id="btnGroup">Switch Group</button>
+      <button class="btn btn-own" id="btnGroupRefresh">Refresh</button>
+    </div>
+    <div class="status" id="groupStatus">Loading groups...</div>
+    <div class="add-hint">The group list comes from the first account's dialogs. Votes and the scheduler will target the selected group.</div>
+  </div>
+
+  <div class="add-section">
     <h2>Add New Account</h2>
     <div class="add-row">
       <input id="inpPhone" type="tel" placeholder="+8801XXXXXXXXX">
@@ -297,6 +311,61 @@ btnSchedStop.onclick = async () => {
 };
 
 loadSchedule();
+
+const selGroup = document.getElementById('selGroup');
+const btnGroup = document.getElementById('btnGroup');
+const btnGroupRefresh = document.getElementById('btnGroupRefresh');
+const groupStatus = document.getElementById('groupStatus');
+
+function setGroupStatus(text, cls) {
+  groupStatus.textContent = text;
+  groupStatus.className = 'status ' + (cls || '');
+}
+
+async function loadGroups(selectCurrent) {
+  setGroupStatus('Loading groups...', 'loading');
+  btnGroupRefresh.disabled = true;
+  try {
+    const r = await fetch('/groups');
+    const d = await r.json();
+    if (d.error) { setGroupStatus('Error: ' + d.error, 'error'); return; }
+    const current = d.current;
+    selGroup.innerHTML = '';
+    d.groups.forEach(g => {
+      const id = String(g.id).replace('-100', '').replace('-', '');
+      const label = g.name + ' (' + id + ')' + (String(g.id) === current || id === current.replace('-', '') ? ' — CURRENT' : '');
+      const opt = document.createElement('option');
+      opt.value = String(g.id);
+      opt.textContent = label;
+      if (String(g.id) === current || id === current.replace('-', '')) opt.selected = true;
+      selGroup.appendChild(opt);
+    });
+    if (!d.groups.length) setGroupStatus('No groups found for this account', 'error');
+    else setGroupStatus(d.groups.length + ' groups found. Current: ' + (d.groups.find(g => String(g.id) === current || String(g.id).replace('-100', '') === current.replace('-', '')) || {}).name + ' — select another and click Switch Group', 'done');
+  } catch (e) {
+    setGroupStatus('Error: ' + e.message, 'error');
+  } finally { btnGroupRefresh.disabled = false; }
+}
+
+btnGroupRefresh.onclick = () => loadGroups(true);
+
+btnGroup.onclick = async () => {
+  const id = selGroup.value;
+  if (!id) { setGroupStatus('Select a group first', 'error'); return; }
+  setGroupStatus('Switching to group ' + id + '...', 'loading');
+  btnGroup.disabled = true;
+  try {
+    const r = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId: id }) });
+    const d = await r.json();
+    if (d.error) { setGroupStatus('Error: ' + d.error, 'error'); return; }
+    setGroupStatus('Switched! Voting now targets group ' + d.chatId, 'done');
+    await loadGroups(true);
+  } catch (e) {
+    setGroupStatus('Error: ' + e.message, 'error');
+  } finally { btnGroup.disabled = false; }
+};
+
+loadGroups(true);
 </script>
 </body>
 </html>

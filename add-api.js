@@ -63,6 +63,19 @@ async function updateRenderConfig(accounts) {
   return true;
 }
 
+function normTokens(name) {
+  return (name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().match(/[a-z0-9]+/g) || [];
+}
+
+function findMatchByName(accounts, name) {
+  const tokens = normTokens(name);
+  if (!tokens.length) return null;
+  return accounts.find(a => {
+    const at = normTokens(a.n);
+    return tokens.every(t => at.includes(t));
+  }) || null;
+}
+
 async function appendAccount(name, session) {
   let accounts;
   if (fs.existsSync(CONFIG)) {
@@ -70,7 +83,7 @@ async function appendAccount(name, session) {
   } else {
     accounts = JSON.parse(process.env.VOTE_CONFIG).accounts;
   }
-  const existing = accounts.find(a => a.n.toLowerCase().includes('#' + name.toLowerCase()) || a.n.toLowerCase().includes(' ' + name.toLowerCase()));
+  const existing = findMatchByName(accounts, name);
   if (existing) {
     existing.s = session;
     if (fs.existsSync(CONFIG)) {

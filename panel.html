@@ -119,8 +119,20 @@ async function loadAccounts() {
   }
 }
 
+function loadSavedOptions() {
+  try { return JSON.parse(localStorage.getItem('voteOptions') || '{}'); } catch { return {}; }
+}
+
+function saveOptions() {
+  const sels = document.querySelectorAll('#accList select');
+  const opts = {};
+  sels.forEach(s => { opts[s.dataset.acc] = s.value; });
+  localStorage.setItem('voteOptions', JSON.stringify(opts));
+}
+
 function renderAccounts(names) {
   accList.innerHTML = '';
+  const saved = loadSavedOptions();
   names.forEach((name, i) => {
     const parts = name.split(' ');
     const num = parts[0].replace('#', '');
@@ -129,14 +141,16 @@ function renderAccounts(names) {
     d.className = 'acc';
     d.id = 'acc-' + i;
     d.innerHTML = '<span class="n">#' + num + '</span><span class="nm">' + nm + '</span>' +
-      '<select id="sel-' + i + '"></select><span class="count">...</span>';
+      '<select id="sel-' + i + '" data-acc="#' + num + '"></select><span class="count">...</span>';
     const sel = d.querySelector('select');
+    const savedVal = saved['#' + num];
     for (let o = 2; o <= 12; o++) {
       const op = document.createElement('option');
       op.value = o; op.textContent = o;
-      if (o === parseInt(num, 10)) op.selected = true;
+      if (savedVal ? String(o) === savedVal : o === parseInt(num, 10)) op.selected = true;
       sel.appendChild(op);
     }
+    sel.addEventListener('change', saveOptions);
     accList.appendChild(d);
   });
 }

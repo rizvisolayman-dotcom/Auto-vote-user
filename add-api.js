@@ -70,6 +70,19 @@ async function appendAccount(name, session) {
   } else {
     accounts = JSON.parse(process.env.VOTE_CONFIG).accounts;
   }
+  const existing = accounts.find(a => a.n.toLowerCase().includes('#' + name.toLowerCase()) || a.n.toLowerCase().includes(' ' + name.toLowerCase()));
+  if (existing) {
+    existing.s = session;
+    if (fs.existsSync(CONFIG)) {
+      let cfg = fs.readFileSync(CONFIG, 'utf8');
+      cfg = cfg.replace(new RegExp("(\\{n:'[^']*" + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "[^']*'\\s*,\\s*s:')([^']*)('\\})"), '$1' + session + '$3');
+      fs.writeFileSync(CONFIG, cfg);
+    }
+    if (process.env.RENDER_SERVICE_ID) {
+      await updateRenderConfig(accounts);
+    }
+    return { number: existing.n.split(' ')[0].replace('#', ''), name: existing.n, message: 'Session updated for ' + existing.n };
+  }
   const num = nextNumber(accounts);
   const newAcc = { n: '#' + num + ' ' + name, s: session };
   accounts = accounts.concat([newAcc]);

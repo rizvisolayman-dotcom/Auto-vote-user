@@ -52,19 +52,23 @@ async function triggerDeploy(sid) {
 
 async function listGroups() {
   const cfg = require('./load-config.js');
-  const acc = cfg.accounts[0];
-  if (!acc) throw new Error('No account');
-  const client = new TelegramClient(new StringSession(acc.s), cfg.API_ID, cfg.API_HASH, { connectionRetries: 3 });
-  await client.connect();
-  try {
-    const dialogs = await client.getDialogs({ limit: 200 });
-    const groups = dialogs
-      .filter(d => d.isGroup || d.isChannel)
-      .map(d => ({ id: d.id, name: d.title || d.name || 'unnamed' }));
-    return groups;
-  } finally {
-    await client.disconnect();
+  let lastErr = null;
+  for (const acc of cfg.accounts) {
+    const client = new TelegramClient(new StringSession(acc.s), cfg.API_ID, cfg.API_HASH, { connectionRetries: 2 });
+    try {
+      await client.connect();
+      const dialogs = await client.getDialogs({ limit: 200 });
+      const groups = dialogs
+        .filter(d => d.isGroup || d.isChannel)
+        .map(d => ({ id: d.id, name: d.title || d.name || 'unnamed' }));
+      await client.disconnect();
+      return groups;
+    } catch (e) {
+      lastErr = e;
+      try { await client.disconnect(); } catch {}
+    }
   }
+  throw lastErr || new Error('No working account');
 }
 
 async function changeChatId(newId) {

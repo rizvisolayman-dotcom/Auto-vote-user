@@ -2,3 +2,4 @@ node_modules/
 .env
 config.js
 voted-polls.json
+set-secrets.js

@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { voteAll, voteEach } = require('./userbot.js');
 const { accounts } = require('./load-config.js');
 const { startLogin, submitCode, submitPassword } = require('./add-api.js');
@@ -8,8 +9,67 @@ const { listGroups, changeChatId } = require('./chat-api.js');
 const scheduler = require('./scheduler.js');
 
 const PORT = process.env.PORT || 8080;
+const PANEL_PASSWORD = process.env.PANEL_PASSWORD || 'vote2026';
 let voting = false;
 let lastResult = null;
+
+function authOk(req) {
+  if (!PANEL_PASSWORD) return true;
+  const cookies = (req.headers.cookie || '').split(';').map(c => c.trim());
+  const hit = cookies.find(c => c.startsWith('panel_auth='));
+  if (!hit) return false;
+  const val = hit.split('=')[1];
+  const expect = crypto.createHash('sha256').update(PANEL_PASSWORD).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(val), Buffer.from(expect));
+}
+
+function sendLogin(res) {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Panel Login</title>
+<style>body{background:#0f172a;color:#e2e8f0;font-family:sans-serif;display:flex;justify-content:center;padding-top:80px}
+.card{background:#1e293b;padding:30px;border-radius:14px;width:300px;text-align:center}
+input{width:100%;padding:12px;margin:12px 0;background:#0f172a;border:1px solid #334155;color:#e2e8f0;border-radius:8px}
+button{width:100%;padding:12px;background:#38bdf8;border:none;border-radius:8px;font-weight:700;cursor:pointer}</style></head><body>
+<div class="card"><h2>Panel Login</h2>
+<form method="POST" action="/login">
+<input type="password" name="password" placeholder="Password" required>
+<button type="submit">Login</button>
+</form></div></body></html>`);
+}
+
+function auth(req, res, url) {
+  if (url === '/login' && req.method === 'POST') {
+    let b = '';
+    req.on('data', c => b += c);
+    req.on('end', () => {
+      const pw = new URLSearchParams(b).get('password');
+      if (pw === PANEL_PASSWORD) {
+        const token = crypto.createHash('sha256').update(PANEL_PASSWORD).digest('hex');
+        res.writeHead(302, {
+          'Location': '/',
+          'Set-Cookie': 'panel_auth=' + token + '; HttpOnly; Path=/; Max-Age=604800',
+        });
+        res.end();
+      } else {
+        sendLogin(res);
+      }
+    });
+    return true;
+  }
+  if (url === '/login' && req.method === 'GET') {
+    sendLogin(res);
+    return true;
+  }
+  if (!authOk(req)) {
+    sendLogin(res);
+    return true;
+  }
+  return false;
+}
+
+function loadHtml() {
+  return fs.readFileSync(path.join(__dirname, 'panel.html'), 'utf8');
+}
 
 function getAccounts() {
   try {
@@ -22,10 +82,6 @@ function getAccounts() {
       return fresh.accounts.map(a => a.n);
     } catch { return accounts.map(a => a.n); }
   }
-}
-
-function loadHtml() {
-  return fs.readFileSync(path.join(__dirname, 'panel.html'), 'utf8');
 }
 
 function json(res, code, obj) {
@@ -53,6 +109,8 @@ function renderOwnResults(log) {
 
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
+
+  if (auth(req, res, url)) return;
 
   if (req.method === 'GET' && url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

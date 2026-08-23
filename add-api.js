@@ -7,6 +7,7 @@ const path = require('path');
 const https = require('https');
 
 const { API_ID, API_HASH } = require('./load-config.js');
+const { persistConfig } = require('./persist.js');
 const CONFIG = path.join(__dirname, 'config.js');
 
 const pending = {};
@@ -16,51 +17,6 @@ function cleanPhone(p) { return (p || '').replace(/[^0-9+]/g, ''); }
 function nextNumber(accounts) {
   const nums = accounts.map(a => parseInt((a.n || '').match(/#(\d+)/)?.[1] || 0, 10));
   return Math.max(2, ...nums) + 1;
-}
-
-function renderApi(method, path, body) {
-  return new Promise((resolve, reject) => {
-    const u = new URL('https://api.render.com/v1' + path);
-    const opts = {
-      hostname: u.hostname, port: 443, path: u.pathname + u.search,
-      method,
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + process.env.RENDER_API_KEY },
-    };
-    const r = https.request(opts, res => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => { try { resolve({ status: res.statusCode, data: JSON.parse(d) }); } catch (e) { resolve({ status: res.statusCode, raw: d }); } });
-    });
-    r.on('error', reject);
-    if (body) r.write(JSON.stringify(body));
-    r.end();
-  });
-}
-
-async function cancelPendingDeploys(sid) {
-  const r = await renderApi('GET', '/services/' + sid + '/deploys');
-  if (!r.data || !Array.isArray(r.data)) return;
-  for (const d of r.data) {
-    const s = d.deploy && d.deploy.status;
-    if (s === 'queued' || s === 'created' || s === 'build_in_progress' || s === 'deploy_in_progress' || s === 'update_in_progress') {
-      await renderApi('POST', '/services/' + sid + '/deploys/' + d.deploy.id + '/cancel', {});
-    }
-  }
-}
-
-async function updateRenderConfig(accounts) {
-  const cfg = {
-    accounts,
-    API_ID,
-    API_HASH,
-    CHAT_ID: process.env.CHAT_ID || require('./load-config.js').CHAT_ID,
-  };
-  const r = await renderApi('PUT', '/services/' + process.env.RENDER_SERVICE_ID + '/env-vars/VOTE_CONFIG', { value: JSON.stringify(cfg) });
-  if (r.status !== 200) throw new Error('Render config update failed: ' + JSON.stringify(r.data || r.raw).substring(0, 120));
-  await cancelPendingDeploys(process.env.RENDER_SERVICE_ID);
-  await renderApi('POST', '/services/' + process.env.RENDER_SERVICE_ID + '/deploys', {});
-  return true;
 }
 
 function normTokens(name) {
@@ -86,30 +42,24 @@ async function appendAccount(name, session) {
   const existing = findMatchByName(accounts, name);
   if (existing) {
     existing.s = session;
-    if (fs.existsSync(CONFIG)) {
-      let cfg = fs.readFileSync(CONFIG, 'utf8');
-      cfg = cfg.replace(new RegExp("(\\{n:'[^']*" + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "[^']*'\\s*,\\s*s:')([^']*)('\\})"), '$1' + session + '$3');
-      fs.writeFileSync(CONFIG, cfg);
-    }
-    if (process.env.RENDER_SERVICE_ID) {
-      await updateRenderConfig(accounts);
-    }
-    return { number: existing.n.split(' ')[0].replace('#', ''), name: existing.n, message: 'Session updated for ' + existing.n };
+    const saved = await persistConfig({
+      accounts,
+      API_ID,
+      API_HASH,
+      CHAT_ID: require('./load-config.js').CHAT_ID,
+    });
+    return { number: existing.n.split(' ')[0].replace('#', ''), name: existing.n, saved, message: 'Session updated for ' + existing.n };
   }
   const num = nextNumber(accounts);
   const newAcc = { n: '#' + num + ' ' + name, s: session };
   accounts = accounts.concat([newAcc]);
 
-  if (fs.existsSync(CONFIG)) {
-    const line = `  {n:'#${num} ${name}', s:'${session}'},\n`;
-    let cfg = fs.readFileSync(CONFIG, 'utf8');
-    cfg = cfg.replace(/\n\];\n\nconst API_ID/, '\n' + line + '];\n\nconst API_ID');
-    fs.writeFileSync(CONFIG, cfg);
-  }
-
-  if (process.env.RENDER_SERVICE_ID) {
-    await updateRenderConfig(accounts);
-  }
+  await persistConfig({
+    accounts,
+    API_ID,
+    API_HASH,
+    CHAT_ID: require('./load-config.js').CHAT_ID,
+  });
   return { number: num, name };
 }
 

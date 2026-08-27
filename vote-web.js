@@ -6,6 +6,7 @@ const { voteAll, voteEach } = require('./userbot.js');
 const { accounts } = require('./load-config.js');
 const { startLogin, submitCode, submitPassword } = require('./add-api.js');
 const { listGroups, changeChatId } = require('./chat-api.js');
+const { persistConfig } = require('./persist.js');
 const scheduler = require('./scheduler.js');
 
 const PORT = process.env.PORT || 8080;
@@ -233,6 +234,43 @@ const server = http.createServer(async (req, res) => {
       const { add_id, password } = await readBody(req);
       const r = await submitPassword(add_id, password);
       json(res, 200, r);
+    } catch (e) {
+      json(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/check-sessions') {
+    try {
+      const { TelegramClient } = require('telegram');
+      const { StringSession } = require('telegram/sessions');
+      const cfg = JSON.parse(process.env.VOTE_CONFIG || '{}');
+      const allAccounts = cfg.accounts || accounts;
+      const results = [];
+      for (let i = 0; i < allAccounts.length; i += 5) {
+        const batch = allAccounts.slice(i, i + 5);
+        const r = await Promise.all(batch.map(async acc => {
+          try {
+            const client = new TelegramClient(new StringSession(acc.s), cfg.API_ID || 31158295, cfg.API_HASH || '2a3fe631cac9b34f645532db4da4f47d', { connectionRetries: 1, timeout: 20 });
+            await client.connect();
+            const me = await client.getMe();
+            await client.disconnect();
+            return { name: acc.n, ok: true };
+          } catch (e) {
+            return { name: acc.n, ok: false, error: (e.message || '').substring(0, 100) };
+          }
+        }));
+        results.push(...r);
+      }
+      const dead = results.filter(r => !r.ok);
+      const alive = results.filter(r => r.ok);
+      let removed = false;
+      if (dead.length) {
+        const aliveAccs = alive.map(r => allAccounts.find(a => a.n === r.name));
+        await persistConfig({ accounts: aliveAccs, API_ID: cfg.API_ID || 31158295, API_HASH: cfg.API_HASH || '2a3fe631cac9b34f645532db4da4f47d', CHAT_ID: cfg.CHAT_ID || '-1003163548017' });
+        removed = true;
+      }
+      json(res, 200, { total: allAccounts.length, alive: alive.length, dead: dead.length, deadNames: dead.map(d => d.name), removed });
     } catch (e) {
       json(res, 500, { error: e.message });
     }

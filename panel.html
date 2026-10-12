@@ -144,7 +144,7 @@ function renderAccounts(names) {
       '<select id="sel-' + i + '" data-acc="#' + num + '"></select><span class="count">...</span>';
     const sel = d.querySelector('select');
     const savedVal = saved['#' + num];
-    for (let o = 2; o <= 12; o++) {
+    for (let o = 2; o <= 14; o++) {
       const op = document.createElement('option');
       op.value = o; op.textContent = o;
       if (savedVal ? String(o) === savedVal : o === parseInt(num, 10)) op.selected = true;

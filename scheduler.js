@@ -77,7 +77,7 @@ async function checkOnce() {
     const accCount = require('./load-config.js').accounts.length;
     let options = schedule.options && Array.isArray(schedule.options) ? schedule.options : [];
     if (options.length !== accCount) {
-      options = Array.from({ length: accCount }, (_, i) => i + 2);
+      options = Array.from({ length: accCount }, (_, i) => i + 3);
       console.log('Options mismatch, using defaults:', options.join(','));
     }
     result = await voteEach(options.join(' '));

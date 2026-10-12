@@ -8,7 +8,7 @@ const { accounts, API_ID, API_HASH, CHAT_ID } = require('./config.js');
   console.log(`Voting for: "${target}"`);
 
   const t = (target||'').trim();
-  const byteVal = /^\d+$/.test(t) && ((n=parseInt(t,10)) >= 2 && n <= 12) ? 0x30 + (n - 2) : -1;
+  const byteVal = /^\d+$/.test(t) && ((n=parseInt(t,10)) >= 3 && n <= 14) ? 0x30 + (n - 3) : -1;
   if (byteVal === -1) { console.log('Invalid option'); return; }
   const optionBytes = Buffer.from([byteVal]);
   console.log(`Option byte: 0x${byteVal.toString(16)}`);

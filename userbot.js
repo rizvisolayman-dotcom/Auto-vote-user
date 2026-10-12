@@ -21,8 +21,8 @@ function freshAccounts() {
 async function voteAll(target) {
   const t = (target || '').trim();
   const n = parseInt(t, 10);
-  if (isNaN(n) || n < 2 || n > 14) return 'Option must be 2-14';
-  const optionBytes = Buffer.from([0x30 + (n - 2)]);
+  if (isNaN(n) || n < 3 || n > 14) return 'Option must be 3-14';
+  const optionBytes = Buffer.from([0x30 + (n - 3)]);
   let pollId = null;
 
   const accs = freshAccounts();
@@ -80,8 +80,8 @@ async function voteEach(options) {
   const results = [];
   const accs = freshAccounts();
   const nums = t.split(/[, ]+/).map(x => parseInt(x, 10));
-  if (nums.length !== accs.length || nums.some(n => isNaN(n) || n < 2 || n > 14)) {
-    return 'Provide one option (2-14) per account: ' + accs.length + ' values';
+  if (nums.length !== accs.length || nums.some(n => isNaN(n) || n < 3 || n > 14)) {
+    return 'Provide one option (3-14) per account: ' + accs.length + ' values';
   }
   await Promise.all(accs.map(async (acc, i) => {
     try {
@@ -98,7 +98,7 @@ async function voteEach(options) {
           } catch {}
         }
         if (match) {
-          await c.invoke(new Api.messages.SendVote({ peer: CHAT_ID, msgId: m.id, options: [Buffer.from([0x30 + (nums[i] - 2)])] }));
+          await c.invoke(new Api.messages.SendVote({ peer: CHAT_ID, msgId: m.id, options: [Buffer.from([0x30 + (nums[i] - 3)])] }));
           results.push(acc.n + ' -> option ' + nums[i]);
           break;
         }

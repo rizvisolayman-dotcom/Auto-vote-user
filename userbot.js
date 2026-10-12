@@ -21,7 +21,7 @@ function freshAccounts() {
 async function voteAll(target) {
   const t = (target || '').trim();
   const n = parseInt(t, 10);
-  if (isNaN(n) || n < 2 || n > 12) return 'Option must be 2-12';
+  if (isNaN(n) || n < 2 || n > 14) return 'Option must be 2-14';
   const optionBytes = Buffer.from([0x30 + (n - 2)]);
   let pollId = null;
 
@@ -80,8 +80,8 @@ async function voteEach(options) {
   const results = [];
   const accs = freshAccounts();
   const nums = t.split(/[, ]+/).map(x => parseInt(x, 10));
-  if (nums.length !== accs.length || nums.some(n => isNaN(n) || n < 2 || n > 12)) {
-    return 'Provide one option (2-12) per account: ' + accs.length + ' values';
+  if (nums.length !== accs.length || nums.some(n => isNaN(n) || n < 2 || n > 14)) {
+    return 'Provide one option (2-14) per account: ' + accs.length + ' values';
   }
   await Promise.all(accs.map(async (acc, i) => {
     try {

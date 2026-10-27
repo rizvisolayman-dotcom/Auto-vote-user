@@ -17,7 +17,7 @@ const SITE = [
 
 // bKash/Nagad auto gateway (ZR PAY BD). Fill keys + enabled=true to go live.
 const RUPANTOR = [
-  'api_key'   => '[REDACTED_RUPANTOR_KEY]',
+  'api_key'   => $_ENV['RUPANTOR_API_KEY'] ?? '',
   'checkout'  => 'https://payment.rupantorpay.com/api/payment/checkout',
   'verify'    => 'https://payment.rupantorpay.com/api/payment/verify-payment',
   'rate'      => 122, // 1 USD = 122 BDT
@@ -46,11 +46,11 @@ const EMAILJS = [
 
 // DB_DRIVER: 'sqlite' (default — only data/ folder needed) or 'mysql' (shared hosting)
 // MySQL holo panel theke peyecho credentials ekhane boshao:
-const DB_DRIVER = 'sqlite';
+const DB_DRIVER = 'mysql';
 const DB_HOST   = 'sql304.infinityfree.com';
 const DB_NAME   = 'if0_43202417';
 const DB_USER   = 'if0_43202417';
-const DB_PASS   = '[REDACTED_DB_PASS]';
+const DB_PASS   = $_ENV['DB_PASS'] ?? 'GxpFgqzddHzg';
 
 const DB_FILE = __DIR__ . '/data/store.sqlite';
 

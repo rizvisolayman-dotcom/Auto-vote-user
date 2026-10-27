@@ -1,0 +1,38 @@
+# InfinityFree / Apache configuration for Panel Sell PHP store
+
+# Disable directory listing
+Options -Indexes
+
+# PHP error reporting (off in production)
+php_flag display_errors off
+php_flag log_errors on
+php_value error_log /tmp/php_errors.log
+
+# Rewrite URLs for clean API endpoints
+RewriteEngine On
+RewriteBase /
+
+# Route API requests to api.php
+RewriteRule ^api/(.*)$ api.php?action=$1 [QSA,L]
+
+# Protect sensitive files
+<FilesMatch "^(config\.php|lib\.php|\.env|\.git)" >
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect data directory
+<FilesMatch "^\.ht">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Compression (if mod_deflate available)
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Cache static assets
+<FilesMatch "\.(css|js|png|jpg|jpeg|gif|ico|svg|webp)$">
+    Header set Cache-Control "max-age=604800, public"
+</FilesMatch>

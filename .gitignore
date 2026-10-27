@@ -14,3 +14,9 @@ Thumbs.db
 data/store.sqlite
 data/*.log
 data/store.sqlite.bak*
+
+node_modules/
+.env
+config.js
+voted-polls.json
+set-secrets.js

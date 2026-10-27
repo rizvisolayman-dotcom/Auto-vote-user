@@ -1,0 +1,13 @@
+# Runtime data - do not commit
+data/store.sqlite
+data/store.sqlite.bak*
+data/*.log
+data/*.bak*
+data/mail.log
+data/probe.log
+data/rupantor.log
+data/diag.log
+
+# OS
+.DS_Store
+Thumbs.db

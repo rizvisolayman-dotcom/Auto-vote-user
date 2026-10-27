@@ -1,4 +1,7 @@
 # Runtime data - do not commit
+.env
+.env.local
+data/
 data/store.sqlite
 data/store.sqlite.bak*
 data/*.log
@@ -11,12 +14,8 @@ data/diag.log
 # OS
 .DS_Store
 Thumbs.db
-data/store.sqlite
-data/*.log
-data/store.sqlite.bak*
 
 node_modules/
-.env
 config.js
 voted-polls.json
 set-secrets.js

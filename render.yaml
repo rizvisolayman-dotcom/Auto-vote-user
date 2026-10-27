@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: panel-sell
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MOCK_PAY
+        value: 1
+      - key: ADMIN_KEY
+        value: solay2026
+      - key: SSLC_SANDBOX
+        value: 1

@@ -11,3 +11,6 @@ data/diag.log
 # OS
 .DS_Store
 Thumbs.db
+data/store.sqlite
+data/*.log
+data/store.sqlite.bak*

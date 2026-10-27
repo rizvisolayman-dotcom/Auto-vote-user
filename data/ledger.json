@@ -1,0 +1,109 @@
+{
+  "wallets": {
+    "buyer@shop.com": {
+      "balance": 700,
+      "deposits": [
+        {
+          "code": "SXC-261018-797L",
+          "amount": 200,
+          "trx": "BKA1234567890ABC",
+          "method": "bKash Send Money",
+          "status": "credited",
+          "created": 1792293602833
+        },
+        {
+          "code": "SXC-261018-YOD2",
+          "amount": 500,
+          "trx": "TRX1234567890",
+          "method": "Binance Pay",
+          "status": "credited",
+          "created": 1792293602070
+        }
+      ]
+    },
+    "solaymanrizvi@gmail.com": {
+      "balance": 6000,
+      "deposits": [
+        {
+          "code": "SXC-261018-RAJU",
+          "amount": 5000,
+          "trx": "Hsjjskakakkaka",
+          "method": "Binance Pay",
+          "status": "credited",
+          "created": 1792298885526
+        },
+        {
+          "code": "SXC-261018-BZEF",
+          "amount": 1000,
+          "trx": "Shahjajajajsj",
+          "method": "bKash Send Money",
+          "status": "credited",
+          "created": 1792294038963
+        }
+      ]
+    }
+  },
+  "payments": {
+    "SXC-TEST-99": {
+      "amount": 500,
+      "purpose": "deposit",
+      "email": "test@shop.com",
+      "status": "initiated",
+      "created": 1792292946363
+    },
+    "SXC-261018-2L35": {
+      "amount": 500,
+      "purpose": "deposit",
+      "email": "jarry2946@gmail.com",
+      "status": "initiated",
+      "created": 1792293025798
+    },
+    "SXC-261018-69OK": {
+      "amount": 1000,
+      "purpose": "deposit",
+      "email": "jarry2946@gmail.com",
+      "status": "initiated",
+      "created": 1792293092143
+    }
+  },
+  "deposits": [
+    {
+      "code": "SXC-261018-RAJU",
+      "email": "solaymanrizvi@gmail.com",
+      "amount": 5000,
+      "trx": "Hsjjskakakkaka",
+      "method": "Binance Pay",
+      "status": "credited",
+      "created": 1792298885526,
+      "done": 1792298962766
+    },
+    {
+      "code": "SXC-261018-BZEF",
+      "email": "solaymanrizvi@gmail.com",
+      "amount": 1000,
+      "trx": "Shahjajajajsj",
+      "method": "bKash Send Money",
+      "status": "auto-verified",
+      "created": 1792294038963
+    },
+    {
+      "code": "SXC-261018-797L",
+      "email": "buyer@shop.com",
+      "amount": 200,
+      "trx": "BKA1234567890ABC",
+      "method": "bKash Send Money",
+      "status": "auto-verified",
+      "created": 1792293602833
+    },
+    {
+      "code": "SXC-261018-YOD2",
+      "email": "buyer@shop.com",
+      "amount": 500,
+      "trx": "TRX1234567890",
+      "method": "Binance Pay",
+      "status": "credited",
+      "created": 1792293602070,
+      "done": 1792293602691
+    }
+  ]
+}

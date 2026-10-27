@@ -489,3 +489,16 @@ main.container { flex: 1; }
 .mt-16 { margin-top: 16px; }
 .hidden { display: none !important; }
 .loader-overlay { position: fixed; inset: 0; background: rgba(5,7,10,.85); z-index: 6000; display: flex; align-items: center; justify-content: center; }
+
+/* ---------- Admin Modal ---------- */
+.admin-box { max-width: 700px; }
+.admin-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.admin-badge { background: var(--primary); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 800; }
+.admin-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.admin-tab { flex: 1; padding: 12px; border: none; background: var(--input-bg); color: var(--text2); font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }
+.admin-tab.active { color: var(--primary); border-bottom-color: var(--primary); background: var(--selected-bg); }
+.admin-content { max-height: 400px; overflow-y: auto; margin-bottom: 16px; }
+.status-pending { color: var(--warning); font-weight: 700; }
+.status-credited, .status-completed { color: var(--success2); font-weight: 700; }
+.status-rejected { color: var(--danger); font-weight: 700; }
+.admin-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); }

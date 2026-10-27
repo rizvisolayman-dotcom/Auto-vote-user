@@ -1,16 +1,364 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(__dirname));
 
 const PORT = process.env.PORT || 3000;
 
+/* ---------- Database (SQLite) ---------- */
+const DB_PATH = path.join(__dirname, 'data', 'store.db');
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  balance REAL DEFAULT 0,
+  role TEXT DEFAULT 'user',
+  session_token TEXT DEFAULT NULL,
+  session_expires INTEGER DEFAULT 0,
+  created_at INTEGER DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  price REAL NOT NULL DEFAULT 0,
+  description TEXT DEFAULT '',
+  image_url TEXT DEFAULT '',
+  verified INTEGER DEFAULT 1,
+  stock INTEGER DEFAULT 1,
+  created_at INTEGER DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id TEXT UNIQUE NOT NULL,
+  user_email TEXT NOT NULL,
+  product_id INTEGER,
+  product_name TEXT,
+  variant TEXT,
+  quantity INTEGER DEFAULT 1,
+  key_type TEXT DEFAULT 'direct',
+  android_id TEXT DEFAULT '',
+  coupon TEXT DEFAULT '',
+  discount REAL DEFAULT 0,
+  amount REAL NOT NULL DEFAULT 0,
+  currency TEXT DEFAULT 'BDT',
+  payment_method TEXT,
+  trx_id TEXT DEFAULT '',
+  status TEXT DEFAULT 'pending',
+  created_at INTEGER DEFAULT (strftime('%s','now'))
+);
+CREATE TABLE IF NOT EXISTS cart (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_email TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  variant TEXT DEFAULT '1day',
+  quantity INTEGER DEFAULT 1,
+  key_type TEXT DEFAULT 'direct',
+  android_id TEXT DEFAULT '',
+  created_at INTEGER DEFAULT (strftime('%s','now')),
+  UNIQUE(user_email, product_id, variant, key_type)
+);
+CREATE TABLE IF NOT EXISTS deposits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE NOT NULL,
+  user_email TEXT NOT NULL,
+  amount REAL NOT NULL,
+  trx TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status TEXT DEFAULT 'pending',
+  created_at INTEGER DEFAULT (strftime('%s','now')),
+  done_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS wallets (
+  user_email TEXT PRIMARY KEY,
+  balance REAL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS coupons (
+  code TEXT PRIMARY KEY,
+  discount_percent REAL NOT NULL DEFAULT 0,
+  active INTEGER DEFAULT 1
+);
+`);
+
+// Seed coupons
+db.prepare(`INSERT OR IGNORE INTO coupons (code, discount_percent, active) VALUES ('SAVE10', 10, 1), ('PANEL50', 50, 1)`).run();
+
+// Seed products if empty
+const count = db.prepare('SELECT COUNT(*) AS c FROM products').get().c;
+if (count === 0) {
+  const ins = db.prepare(`INSERT INTO products (name, category, price, description, verified, stock, image_url) VALUES (?,?,?,?,?,?,?)`);
+  const products = [
+    ['BALA MOD NON ROOT','ANDROID',25,'Non-root Android panel mod',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=BALA+MOD'],
+    ['Drip Client-Non Root','ANDROID',60,'Drip client panel non-root',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=DRIP+CLIENT'],
+    ['Hg Cheat','ANDROID',80,'Hg cheat panel for Android',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=HG+CHEAT'],
+    ['Prime Mod','ANDROID',50,'Prime Android mod panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=PRIME+MOD'],
+    ['AimHack Android + IOS','ANDROID',20,'Aimhack for Android and iOS',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=AIMHACK'],
+    ['X-REG NON ROOT-IOS','ANDROID',20,'X-REG non-root iOS panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=X-REG'],
+    ['Drip Proxy Apk','ANDROID PROXY',100,'Drip proxy APK panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=DRIP+PROXY'],
+    ['HG Proxy Android','ANDROID PROXY',80,'Hg proxy panel Android',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=HG+PROXY'],
+    ['HG Prime Proxy New','ANDROID PROXY',50,'New HG prime proxy',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=HG+PRIME'],
+    ['ANGRY MOOD','ANDROID ROOT',70,'Angry mood root panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=ANGRY+MOOD'],
+    ['HEX-BLADE ROOT','ANDROID ROOT',100,'Hex blade root panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=HEX+BLADE'],
+    ['Drip Root Android','ANDROID ROOT',100,'Drip root Android panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=DRIP+ROOT'],
+    ['GUILD BOT','GUILD GLORY',110,'Guild bot panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=GUILD+BOT'],
+    ['FF GLORY PRO','GUILD GLORY',150,'Free Fire glory pro panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=FF+GLORY'],
+    ['PHANTOM ANDROID-IOS','IOS HACK',2000,'Phantom Android-iOS panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=PHANTOM'],
+    ['MIGUL PRO AIMKILL','IOS HACK',500,'Migul pro aimkill iOS',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=MIGUL+PRO'],
+    ['Br Mod Pc','PC HACK',120,'Br mod PC panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=BR+MOD+PC'],
+    ['ROCKET MOD KERNEL','PC HACK',150,'Rocket mod kernel PC',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=ROCKET+MOD'],
+    ['E•SIGN-1 YEAR','PC HACK',500,'E-sign certificate 1 year',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=E+SIGN'],
+    ['ZOLO CHEAT- PUBG','PC HACK',300,'Zolo cheat for PUBG',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=ZOLO+CHEAT'],
+    ['ELITE MODZ','PC HACK',400,'Elite modz PC panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=ELITE+MODZ'],
+    ['DOLPHIN PLUSH','PC HACK',250,'Dolphin plush panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=DOLPHIN'],
+    ['Carrom Auto Play','PC HACK',100,'Carrom auto play panel',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=CARROM'],
+    ['XYZ CHEATS NON ROOT','PC HACK',180,'XYZ cheats non-root PC',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=XYZ+CHEAT'],
+    ['UNSEEN MOD ROOT','PC HACK',50,'Unseen mod root PC',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=UNSEEN+MOD'],
+    ['PRIME MOD-NON ROOT','PC HACK',60,'Prime mod non-root PC',1,99,'https://via.placeholder.com/300x200/6f00ff/ffffff?text=PRIME+MOD']
+  ];
+  for (const p of products) ins.run(...p);
+}
+
+/* ---------- Helpers ---------- */
 function ok(res, data) { return res.json({ success: true, ...data }); }
 function fail(res, status, message) { return res.status(status).json({ success: false, message }); }
+function genOrderId() { return 'PS' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(); }
+function genCode() { return 'SXC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(); }
+function hashPw(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
+function genToken() { return crypto.randomBytes(32).toString('hex'); }
+
+const CURRENCIES = {
+  BDT: { symbol: '৳', name: 'Bangladeshi Taka', rate: 1 },
+  USDT: { symbol: 'USDT', name: 'US Dollar', rate: 125 },
+  INR: { symbol: '₹', name: 'Indian Rupee', rate: 1 }
+};
+const VARIANTS = [
+  { key: '1day', label: '1 Day', mult: 1 },
+  { key: '7day', label: '7 Days', mult: 5 },
+  { key: '30day', label: '30 Days', mult: 15 }
+];
+const KEY_TYPES = [
+  { key: 'direct', label: 'Direct Key' },
+  { key: 'device', label: 'Device Bound + Android ID' }
+];
+const PAYMENTS = [
+  { id: 'binance', label: 'Binance Pay', icon: 'fas fa-coins', hint: 'Send to Binance Pay ID' },
+  { id: 'bkash', label: 'bKash', icon: 'fas fa-mobile-alt', hint: 'Personal / Merchant' },
+  { id: 'nagad', label: 'Nagad', icon: 'fas fa-credit-card', hint: 'Merchant / Personal' },
+  { id: 'usdt', label: 'USDT (TRC20)', icon: 'fab fa-bitcoin', hint: 'Crypto wallet' }
+];
+
+function requireAuth(req, res, next) {
+  const token = req.headers['authorization'] || req.query.token || (req.body && req.body.token);
+  if (!token) return fail(res, 401, 'Login required');
+  const row = db.prepare('SELECT * FROM users WHERE session_token = ? AND session_expires > strftime(\'%s\',\'now\')').get(token);
+  if (!row) return fail(res, 401, 'Invalid or expired session');
+  req.user = row;
+  next();
+}
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') return fail(res, 403, 'Admin only');
+  next();
+}
+
+/* ---------- Auth ---------- */
+app.post('/api/register', (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+    if (!name || !email || !password) return fail(res, 400, 'All fields required');
+    if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) return fail(res, 400, 'Email already registered');
+    const token = genToken();
+    db.prepare(`INSERT INTO users (name, email, password, role, session_token, session_expires) VALUES (?,?,?,'user',?, strftime('%s','now') + 7*86400)`)
+      .run(name, email, hashPw(password), token, Date.now() / 1000 + 7*86400);
+    db.prepare(`INSERT OR IGNORE INTO wallets (user_email, balance) VALUES (?, 0)`).run(email);
+    return ok(res, { token, user: { name, email, role: 'user', balance: 0 } });
+  } catch (e) { return fail(res, 500, e.message); }
+});
+
+app.post('/api/login', (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return fail(res, 400, 'Email and password required');
+    const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!row || row.password !== hashPw(password)) return fail(res, 401, 'Invalid credentials');
+    const token = genToken();
+    db.prepare('UPDATE users SET session_token = ?, session_expires = strftime(\'%s\',\'now\') + 7*86400 WHERE id = ?').run(token, row.id);
+    return ok(res, { token, user: { id: row.id, name: row.name, email: row.email, role: row.role, balance: Number(row.balance || 0) } });
+  } catch (e) { return fail(res, 500, e.message); }
+});
+
+app.post('/api/logout', requireAuth, (req, res) => {
+  db.prepare('UPDATE users SET session_token = NULL, session_expires = 0 WHERE id = ?').run(req.user.id);
+  return ok(res, { ok: true });
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  return ok(res, { user: { id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role, balance: Number(req.user.balance || 0) } });
+});
+
+/* ---------- Products & Categories ---------- */
+app.get('/api/products', (req, res) => {
+  const { cat } = req.query;
+  let sql = 'SELECT * FROM products WHERE stock > 0';
+  const params = [];
+  if (cat && cat !== 'All') { sql += ' AND category = ?'; params.push(cat); }
+  sql += ' ORDER BY id DESC';
+  const rows = db.prepare(sql).all(...params);
+  return ok(res, { products: rows });
+});
+
+app.get('/api/categories', (req, res) => {
+  const rows = db.prepare('SELECT DISTINCT category FROM products ORDER BY category').all();
+  return ok(res, { categories: ['All', ...rows.map(r => r.category)] });
+});
+
+app.post('/api/products', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { name, category, price, description, image_url, verified, stock } = req.body || {};
+    if (!name || !category || !price) return fail(res, 400, 'name, category, price required');
+    const id = db.prepare(`INSERT INTO products (name, category, price, description, image_url, verified, stock) VALUES (?,?,?,?,?,?,?)`)
+      .run(name, category, Number(price), description || '', image_url || '', verified ? 1 : 0, Number(stock) || 1).lastInsertRowid;
+    return ok(res, { id, name, category, price: Number(price) });
+  } catch (e) { return fail(res, 500, e.message); }
+});
+
+/* ---------- Cart ---------- */
+app.get('/api/cart', requireAuth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM cart WHERE user_email = ?').all(req.user.email);
+  const products = db.prepare('SELECT id, name, category, price FROM products').all();
+  const pMap = {}; for (const p of products) pMap[p.id] = p;
+  const items = rows.map(r => {
+    const p = pMap[r.product_id];
+    const variant = VARIANTS.find(v => v.key === r.variant) || VARIANTS[0];
+    const line = p.price * variant.mult * r.quantity;
+    return { id: r.id, product: p, variant, quantity: r.quantity, key_type: r.key_type, android_id: r.android_id, line_total: line };
+  });
+  const total = items.reduce((s, i) => s + i.line_total, 0);
+  return ok(res, { items, total: fmt(total) });
+});
+
+app.post('/api/cart/add', requireAuth, (req, res) => {
+  try {
+    const { product_id, variant = '1day', quantity = 1, key_type = 'direct', android_id = '' } = req.body || {};
+    const p = db.prepare('SELECT * FROM products WHERE id = ? AND stock > 0').get(product_id);
+    if (!p) return fail(res, 404, 'Product not found or out of stock');
+    const existing = db.prepare('SELECT * FROM cart WHERE user_email = ? AND product_id = ? AND variant = ? AND key_type = ?').get(req.user.email, product_id, variant, key_type);
+    if (existing) {
+      db.prepare('UPDATE cart SET quantity = quantity + ? WHERE id = ?').push(Number(quantity) || 1, existing.id).run();
+    } else {
+      db.prepare(`INSERT INTO cart (user_email, product_id, variant, quantity, key_type, android_id) VALUES (?,?,?,?,?,?)`)
+        .run(req.user.email, product_id, variant, Number(quantity) || 1, key_type, android_id || '');
+    }
+    return ok(res, { ok: true });
+  } catch (e) { return fail(res, 500, e.message); }
+});
+
+app.post('/api/cart/remove', requireAuth, (req, res) => {
+  const { id } = req.body || {};
+  db.prepare('DELETE FROM cart WHERE id = ? AND user_email = ?').run(id, req.user.email);
+  return ok(res, { ok: true });
+});
+
+app.post('/api/cart/clear', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM cart WHERE user_email = ?').run(req.user.email);
+  return ok(res, { ok: true });
+});
+
+function fmt(v) { return parseFloat(v || 0).toFixed(2); }
+
+/* ---------- Coupons ---------- */
+app.post('/api/coupon/validate', requireAuth, (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return fail(res, 400, 'Coupon code required');
+  const c = db.prepare('SELECT * FROM coupons WHERE code = ? AND active = 1').get(code.toUpperCase());
+  if (!c) return fail(res, 404, 'Invalid coupon code');
+  return ok(res, { code: c.code, discount_percent: c.discount_percent });
+});
+
+/* ---------- Checkout / Orders ---------- */
+app.post('/api/checkout', requireAuth, (req, res) => {
+  try {
+    const { items, variant, key_type, android_id, coupon, payment_method } = req.body || {};
+    if (!items || !Array.isArray(items) || items.length === 0) return fail(res, 400, 'Cart is empty');
+    if (!payment_method) return fail(res, 400, 'Payment method required');
+
+    let subtotal = 0;
+    for (const it of items) {
+      const p = db.prepare('SELECT * FROM products WHERE id = ? AND stock > 0').get(it.product_id);
+      if (!p) return fail(res, 404, `Product ${it.product_id} not available`);
+      subtotal += p.price * (VARIANTS.find(v => v.key === it.variant) || VARIANTS[0]).mult * it.quantity;
+    }
+    let discount = 0;
+    if (coupon) {
+      const c = db.prepare('SELECT * FROM coupons WHERE code = ? AND active = 1').get(coupon.toUpperCase());
+      if (c) discount = subtotal * (c.discount_percent / 100);
+    }
+    const final = subtotal - discount;
+
+    const orderId = genOrderId();
+    for (const it of items) {
+      const p = db.prepare('SELECT * FROM products WHERE id = ?').get(it.product_id);
+      const variant = VARIANTS.find(v => v.key === it.variant) || VARIANTS[0];
+      const lineTotal = p.price * variant.mult * it.quantity;
+      db.prepare(`INSERT INTO orders (order_id, user_email, product_id, product_name, variant, quantity, key_type, android_id, coupon, discount, amount, currency, payment_method, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending')`)
+        .run(orderId, req.user.email, p.id, p.name, variant.key, it.quantity, key_type, it.android_id || '', coupon || '', c ? c.discount_percent : 0, lineTotal, req.user.currency || 'BDT', payment_method);
+      db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?').run(it.quantity, p.id);
+    }
+    db.prepare('DELETE FROM cart WHERE user_email = ?').run(req.user.email);
+
+    return ok(res, { order_id: orderId, amount: fmt(final), currency: state.currency || 'BDT', payment_method, items_count: items.length });
+  } catch (e) { return fail(res, 500, e.message); }
+});
+
+let state = { currency: 'BDT' };
+
+app.get('/api/orders', requireAuth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM orders WHERE user_email = ? ORDER BY created_at DESC').all(req.user.email);
+  return ok(res, { orders: rows });
+});
+
+app.get('/api/orders/:orderId', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT * FROM orders WHERE order_id = ? AND user_email = ?').get(req.params.orderId, req.user.email);
+  if (!row) return fail(res, 404, 'Order not found');
+  return ok(res, { order: row });
+});
+
+/* ---------- Payments ---------- */
+app.post('/api/payment/verify-bkash', requireAuth, async (req, res) => {
+  try {
+    const { trxId, amount } = req.body || {};
+    if (!trxId) return fail(res, 400, 'trxId required');
+    const result = await verifyBkash(trxId, amount);
+    if (result.configured === false && process.env.MOCK_PAY !== '1') return fail(res, 503, 'bKash not configured');
+    if (!result.verified) return fail(res, 400, result.reason || 'Verification failed');
+    return ok(res, { provider: 'bkash', trxId, amount: result.amount, status: result.status });
+  } catch (e) { return fail(res, 500, e.message || 'Server error'); }
+});
+
+app.post('/api/payment/verify-nagad', requireAuth, async (req, res) => {
+  try {
+    const { trxId, amount } = req.body || {};
+    if (!trxId) return fail(res, 400, 'trxId required');
+    const result = await verifyNagad(trxId, amount);
+    if (result.configured === false && process.env.MOCK_PAY !== '1') return fail(res, 503, 'Nagad not configured');
+    if (!result.verified) return fail(res, 400, result.reason || 'Verification failed');
+    return ok(res, { provider: 'nagad', trxId, amount: result.amount, status: result.status });
+  } catch (e) { return fail(res, 500, e.message || 'Server error'); }
+});
 
 async function bkashGrantToken() {
   const base = process.env.BKASH_BASE_URL;
@@ -20,334 +368,117 @@ async function bkashGrantToken() {
   const appSecret = process.env.BKASH_APP_SECRET;
   if (!base || !username || !password || !appKey || !appSecret) return null;
   const r = await fetch(`${base}/tokenized/checkout/token/grant`, {
-    method: 'POST',
-    headers: { username, password, 'Content-Type': 'application/json' },
+    method: 'POST', headers: { username, password, 'Content-Type': 'application/json' },
     body: JSON.stringify({ app_key: appKey, app_secret: appSecret })
   });
   const j = await r.json();
-  if (!r.ok || !j.id_token) throw new Error(j.statusMessage || j.message || 'bKash token grant failed');
+  if (!r.ok || !j.id_token) return null;
   return { token: j.id_token, appKey };
 }
-
 async function verifyBkash(trxId, amount) {
   if (process.env.MOCK_PAY === '1') return { verified: true, status: 'MockVerified', amount: Number(amount) || 0 };
   const ctx = await bkashGrantToken();
   if (!ctx) return { configured: false };
   const base = process.env.BKASH_BASE_URL;
   const r = await fetch(`${base}/tokenized/checkout/general/searchTransaction`, {
-    method: 'POST',
-    headers: {
-      Authorization: ctx.token,
-      'X-APP-Key': ctx.appKey,
-      'Content-Type': 'application/json'
-    },
+    method: 'POST', headers: { Authorization: ctx.token, 'X-APP-Key': ctx.appKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ trxID: trxId })
   });
   const j = await r.json();
-  if (!r.ok) throw new Error(j.statusMessage || j.message || 'bKash search failed');
+  if (!r.ok) return { verified: false, reason: j.statusMessage || 'bKash search failed' };
   const status = j.transactionStatus || j.trxStatus || j.status;
   const paid = Number(j.amount || j.paidAmount || 0);
-  const invoice = j.merchantInvoiceNumber || j.invoiceNumber;
-  if (status !== 'Completed') return { verified: false, reason: 'Transaction not completed', raw: j };
-  if (amount && paid && Math.abs(paid - Number(amount)) > 0.01) return { verified: false, reason: 'Amount mismatch', raw: j };
-  return { verified: true, status, amount: paid, invoice, raw: j };
+  if (status !== 'Completed') return { verified: false, reason: 'Transaction not completed' };
+  if (amount && paid && Math.abs(paid - Number(amount)) > 0.01) return { verified: false, reason: 'Amount mismatch' };
+  return { verified: true, status, amount: paid };
 }
-
 async function verifyNagad(trxId, amount) {
   if (process.env.MOCK_PAY === '1') return { verified: true, status: 'MockVerified', amount: Number(amount) || 0 };
   const base = process.env.NAGAD_BASE_URL;
   const merchantId = process.env.NAGAD_MERCHANT_ID;
   if (!base || !merchantId) return { configured: false };
   const url = process.env.NAGAD_VERIFY_URL || `${base}/verify/${encodeURIComponent(trxId)}`;
-  const r = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'X-Merchant-Id': merchantId,
-      'Content-Type': 'application/json'
-    }
-  });
+  const r = await fetch(url, { method: 'GET', headers: { 'X-Merchant-Id': merchantId, 'Content-Type': 'application/json' } });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.message || 'Nagad verify failed');
+  if (!r.ok) return { verified: false, reason: j.message || 'Nagad verify failed' };
   const status = j.status || j.transactionStatus;
   const paid = Number(j.amount || j.paidAmount || 0);
-  if (status !== 'Success' && status !== 'Completed') return { verified: false, reason: 'Transaction not successful', raw: j };
-  if (amount && paid && Math.abs(paid - Number(amount)) > 0.01) return { verified: false, reason: 'Amount mismatch', raw: j };
-  return { verified: true, status, amount: paid, raw: j };
+  if (status !== 'Success' && status !== 'Completed') return { verified: false, reason: 'Transaction not successful' };
+  if (amount && paid && Math.abs(paid - Number(amount)) > 0.01) return { verified: false, reason: 'Amount mismatch' };
+  return { verified: true, status, amount: paid };
 }
 
-app.get('/health', (req, res) => ok(res, { status: 'up' }));
+/* ---------- Wallet / Deposit ---------- */
+app.get('/api/wallet', requireAuth, (req, res) => {
+  const w = db.prepare('SELECT balance FROM wallets WHERE user_email = ?').get(req.user.email);
+  return ok(res, { balance: Number((w && w.balance) || 0) });
+});
 
-/* ---------- SSLCommerz hosted gateway (bKash / Nagad / Card) ---------- */
-const fs = require('fs');
-const path = require('path');
-const LEDGER = path.join(__dirname, 'data', 'ledger.json');
-
-function readLedger() {
-  try { return JSON.parse(fs.readFileSync(LEDGER, 'utf8')); }
-  catch (e) { return { wallets: {}, payments: {} }; }
-}
-function writeLedger(d) {
-  fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
-  fs.writeFileSync(LEDGER, JSON.stringify(d, null, 2));
-}
-function sszCfg() {
-  const sandbox = process.env.SSLC_SANDBOX === '1';
-  return {
-    id: process.env.SSLC_STORE_ID,
-    pw: process.env.SSLC_STORE_PASSWD,
-    gw: process.env.SSLC_GW_URL || (sandbox ? 'https://sandbox.sslcommerz.com/gwprocess/v4/api.php' : 'https://securepay.sslcommerz.com/gwprocess/v4/api.php'),
-    validator: process.env.SSLC_VALIDATOR || (sandbox ? 'https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php' : 'https://securepay.sslcommerz.com/validator/api/validationserverAPI.php'),
-    sandbox
-  };
-}
-function baseUrl() {
-  return process.env.BASE_URL || ('http://127.0.0.1:' + PORT);
-}
-
-app.post('/api/create-payment', async (req, res) => {
+app.post('/api/deposit', requireAuth, (req, res) => {
   try {
-    const { amount, purpose = 'deposit', email, name, code } = req.body || {};
+    const { amount, trx, method } = req.body || {};
     const amt = Number(amount);
-    if (!email) return fail(res, 400, 'email is required');
-    if (!isFinite(amt) || amt <= 0) return fail(res, 400, 'amount is invalid');
-    const cfg = sszCfg();
-    if (!cfg.id || !cfg.pw) return fail(res, 503, 'Gateway not configured — add SSLC_STORE_ID and SSLC_STORE_PASSWD to .env');
-    const tranId = (String(code || ('SXC' + Date.now().toString(36))).toUpperCase()).replace(/[^A-Z0-9-]/g, '');
-    const params = new URLSearchParams({
-      store_id: cfg.id,
-      store_passwd: cfg.pw,
-      total_amount: amt.toFixed(2),
-      currency: 'BDT',
-      tran_id: tranId,
-      success_url: baseUrl() + '/payment/success',
-      fail_url: baseUrl() + '/payment/fail',
-      cancel_url: baseUrl() + '/payment/cancel',
-      ipn_url: baseUrl() + '/payment/ipn',
-      cus_name: String(name || email).slice(0, 60),
-      cus_email: String(email).slice(0, 60),
-      cus_add1: 'Dhaka',
-      cus_city: 'Dhaka',
-      cus_country: 'Bangladesh',
-      cus_phone: '01700000000',
-      shipping_method: 'NO',
-      product_name: purpose === 'deposit' ? 'Wallet Add Money' : 'Store Order',
-      product_category: purpose === 'deposit' ? 'Wallet' : 'Store',
-      product_profile: 'general',
-      value_a: purpose,
-      value_b: String(email),
-      value_c: amt.toFixed(2),
-      response_type: 'json'
-    });
-    const r = await fetch(cfg.gw, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString()
-    });
-    const j = await r.json().catch(() => ({}));
-    const url = j.GWURL || j.redirectGatewayURL || j.gwUrl;
-    if (!url) return fail(res, 502, j.failedreason || j.statusMessage || 'Gateway session failed');
-    const L = readLedger();
-    L.payments[tranId] = { amount: amt, purpose, email, status: 'initiated', created: Date.now() };
-    writeLedger(L);
-    return ok(res, { payment_url: url, tran_id: tranId });
-  } catch (e) {
-    return fail(res, 500, e.message || 'Server error');
-  }
+    if (!amt || amt <= 0) return fail(res, 400, 'Invalid amount');
+    if (!trx || String(trx).length < 8) return fail(res, 400, 'Invalid transaction ID');
+    const code = genCode();
+    db.prepare(`INSERT INTO deposits (code, user_email, amount, trx, method, status) VALUES (?,?,?,?,?,'pending')`)
+      .run(code, req.user.email, amt, trx, method || 'Binance Pay');
+    return ok(res, { code, amount: amt, status: 'pending', msg: 'Deposit submitted for admin approval' });
+  } catch (e) { return fail(res, 500, e.message); }
 });
 
-async function validateSsl(valId) {
-  const cfg = sszCfg();
-  const u = new URL(cfg.validator);
-  u.searchParams.set('val_id', valId);
-  u.searchParams.set('store_id', cfg.id);
-  u.searchParams.set('store_passwd', cfg.pw);
-  u.searchParams.set('format', 'json');
-  const r = await fetch(u);
-  const j = await r.json().catch(() => ({}));
-  return j;
-}
-
-async function settlePayment(valId) {
-  const j = await validateSsl(valId);
-  const valid = j.status === 'VALID' || j.status === 'VALIDATED';
-  const tranId = String(j.tran_id || '').toUpperCase();
-  const amt = Number(j.currency_amount || j.amount || 0);
-  if (!valid || !tranId) return { ok: false, reason: j.status || 'Invalid transaction' };
-  const L = readLedger();
-  const p = L.payments[tranId];
-  if (!p) return { ok: false, reason: 'Unknown transaction' };
-  if (p.status === 'credited') return { ok: true, purpose: p.purpose, amount: p.amount, email: p.email, already: true };
-  if (Math.abs(amt - p.amount) > 0.01) return { ok: false, reason: 'Amount mismatch' };
-  p.status = 'credited';
-  p.val_id = valId;
-  p.paid = Date.now();
-  if (p.purpose === 'deposit') {
-    const w = L.wallets[p.email] || { balance: 0, deposits: [] };
-    w.balance = (Number(w.balance) || 0) + p.amount;
-    w.deposits = w.deposits || [];
-    w.deposits.unshift({ code: tranId, amount: p.amount, trx: valId, method: 'Instant Pay', status: 'credited', created: Date.now() });
-    w.deposits = w.deposits.slice(0, 50);
-    L.wallets[p.email] = w;
-  }
-  L.deposits = L.deposits || [];
-  if (!L.deposits.find(x => x.code === tranId)) {
-    L.deposits.unshift({
-      code: tranId, email: p.email, amount: p.amount, trx: valId || tranId,
-      method: 'Instant Pay (Gateway)', status: p.purpose === 'deposit' ? 'auto-verified' : 'paid',
-      created: Date.now()
-    });
-    L.deposits = L.deposits.slice(0, 300);
-  }
-  writeLedger(L);
-  return { ok: true, purpose: p.purpose, amount: p.amount, email: p.email };
-}
-
-function returnUrl(res, paid, extra) {
-  const q = new URLSearchParams({ paid: paid ? '1' : '0', ...extra });
-  res.redirect('/?' + q.toString());
-}
-
-app.get('/payment/success', async (req, res) => {
-  try {
-    const { val_id } = req.query;
-    if (!val_id) return returnUrl(res, false, { msg: 'missing val_id' });
-    const r = await settlePayment(val_id);
-    return returnUrl(res, r.ok, { purpose: r.purpose || '', amount: r.amount || 0, tran: req.query.tran_id || '' , msg: r.ok ? 'ok' : (r.reason || 'fail') });
-  } catch (e) {
-    return returnUrl(res, false, { msg: e.message });
-  }
+/* ---------- Admin ---------- */
+function isAdmin(req) { return req.user && req.user.role === 'admin'; }
+app.get('/api/admin/deposits', requireAuth, requireAdmin, (req, res) => {
+  const rows = db.prepare('SELECT * FROM deposits ORDER BY created_at DESC').all();
+  return ok(res, { list: rows });
 });
-
-app.post('/payment/ipn', async (req, res) => {
-  try {
-    const val_id = req.body.val_id || req.query.val_id;
-    if (!val_id) return fail(res, 400, 'val_id required');
-    const r = await settlePayment(val_id);
-    return ok(res, { settled: r.ok, reason: r.reason || '' });
-  } catch (e) {
-    return fail(res, 500, e.message);
-  }
-});
-
-app.get('/payment/fail', (req, res) => returnUrl(res, false, { msg: 'failed' }));
-app.get('/payment/cancel', (req, res) => returnUrl(res, false, { msg: 'cancelled' }));
-
-app.get('/api/wallet', (req, res) => {
-  const email = req.query.email;
-  if (!email) return fail(res, 400, 'email is required');
-  const L = readLedger();
-  const w = L.wallets[email] || { balance: 0, deposits: [] };
-  return ok(res, { balance: Number(w.balance) || 0, deposits: w.deposits || [] });
-});
-
-/* ---------- admin: manual deposit approve ---------- */
-const ADMIN_KEY = process.env.ADMIN_KEY || 'admin123';
-function isAdmin(req) {
-  const k = (req.body && req.body.key) || req.query.key || '';
-  return String(k) === String(ADMIN_KEY);
-}
-function noAdmin(res) { return fail(res, 401, 'Wrong admin key'); }
-
-app.post('/api/deposits', (req, res) => {
-  const { email, amount, trx, method } = req.body || {};
-  const amt = Number(amount);
-  if (!email) return fail(res, 400, 'email is required');
-  if (!isFinite(amt) || amt <= 0) return fail(res, 400, 'amount invalid');
-  if (!trx || String(trx).length < 8) return fail(res, 400, 'trx invalid');
-  const code = 'SXC-' + new Date().toISOString().slice(2, 10).replace(/-/g, '') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-  const L = readLedger();
-  L.deposits = L.deposits || [];
-  L.deposits.unshift({ code, email, amount: amt, trx: String(trx), method: method || 'Binance Pay', status: 'pending', created: Date.now() });
-  L.deposits = L.deposits.slice(0, 300);
-  writeLedger(L);
-  return ok(res, { code });
-});
-
-app.post('/api/deposit/auto', async (req, res) => {
-  try {
-    const { email, amount, trx, provider } = req.body || {};
-    const amt = Number(amount);
-    if (!email) return fail(res, 400, 'email is required');
-    if (!isFinite(amt) || amt <= 0) return fail(res, 400, 'amount invalid');
-    if (!trx || String(trx).length < 8) return fail(res, 400, 'trx invalid');
-    const result = provider === 'nagad' ? await verifyNagad(trx, amt) : await verifyBkash(trx, amt);
-    if (result.configured === false && process.env.MOCK_PAY !== '1') return fail(res, 503, 'Verification API not configured');
-    if (!result.verified) return fail(res, 400, result.reason || 'Verification failed');
-    const L = readLedger();
-    const w = L.wallets[email] || { balance: 0, deposits: [] };
-    w.balance = (Number(w.balance) || 0) + amt;
-    w.deposits = w.deposits || [];
-    const code = 'SXC-' + new Date().toISOString().slice(2, 10).replace(/-/g, '') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-    w.deposits.unshift({ code, amount: amt, trx: String(trx), method: (provider === 'nagad' ? 'Nagad' : 'bKash') + ' Send Money', status: 'credited', created: Date.now() });
-    w.deposits = w.deposits.slice(0, 50);
-    L.wallets[email] = w;
-    L.deposits = L.deposits || [];
-    L.deposits.unshift({ code, email, amount: amt, trx: String(trx), method: (provider === 'nagad' ? 'Nagad' : 'bKash') + ' Send Money', status: 'auto-verified', created: Date.now() });
-    L.deposits = L.deposits.slice(0, 300);
-    writeLedger(L);
-    return ok(res, { code, balance: w.balance });
-  } catch (e) {
-    return fail(res, 500, e.message || 'Server error');
-  }
-});
-
-app.get('/api/admin/deposits', (req, res) => {
-  if (!isAdmin(req)) return noAdmin(res);
-  const L = readLedger();
-  return ok(res, { list: L.deposits || [] });
-});
-
-app.post('/api/admin/deposits/act', (req, res) => {
-  if (!isAdmin(req)) return noAdmin(res);
+app.post('/api/admin/deposits/act', requireAuth, requireAdmin, (req, res) => {
   const { code, action } = req.body || {};
-  const L = readLedger();
-  L.deposits = L.deposits || [];
-  const d = L.deposits.find(x => x.code === code);
+  const d = db.prepare('SELECT * FROM deposits WHERE code = ?').get(code);
   if (!d) return fail(res, 404, 'Deposit not found');
   if (d.status !== 'pending') return fail(res, 400, 'Already ' + d.status);
   if (action === 'reject') {
-    d.status = 'rejected';
-    d.done = Date.now();
-    writeLedger(L);
+    db.prepare('UPDATE deposits SET status = \'rejected\', done_at = strftime(\'%s\',\'now\') WHERE code = ?').run(code);
     return ok(res, { status: 'rejected' });
   }
   if (action !== 'approve') return fail(res, 400, 'action must be approve or reject');
-  d.status = 'credited';
-  d.done = Date.now();
-  const w = L.wallets[d.email] || { balance: 0, deposits: [] };
-  w.balance = (Number(w.balance) || 0) + d.amount;
-  w.deposits = w.deposits || [];
-  w.deposits.unshift({ code: d.code, amount: d.amount, trx: d.trx, method: d.method, status: 'credited', created: d.created });
-  w.deposits = w.deposits.slice(0, 50);
-  L.wallets[d.email] = w;
-  writeLedger(L);
-  return ok(res, { status: 'credited', balance: w.balance });
-});
-
-app.post('/verify-bkash', async (req, res) => {
-  try {
-    const { trxId, amount } = req.body || {};
-    if (!trxId) return fail(res, 400, 'trxId is required');
-    const result = await verifyBkash(trxId, amount);
-    if (result.configured === false) return fail(res, 503, 'bKash credentials not configured');
-    if (!result.verified) return fail(res, 400, result.reason || 'Verification failed');
-    return ok(res, { provider: 'bkash', trxId, amount: result.amount, status: result.status });
-  } catch (e) {
-    return fail(res, 500, e.message || 'Server error');
+  db.prepare('UPDATE deposits SET status = \'credited\', done_at = strftime(\'%s\',\'now\') WHERE code = ?').run(code);
+  const w = db.prepare('SELECT * FROM wallets WHERE user_email = ?').get(d.user_email);
+  if (w) {
+    db.prepare('UPDATE wallets SET balance = balance + ? WHERE user_email = ?').run(d.amount, d.user_email);
+  } else {
+    db.prepare('INSERT INTO wallets (user_email, balance) VALUES (?, ?)').run(d.user_email, d.amount);
   }
+  return ok(res, { status: 'credited', balance: Number((w && w.balance) || 0) + d.amount });
+});
+app.get('/api/admin/orders', requireAuth, requireAdmin, (req, res) => {
+  const rows = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
+  return ok(res, { orders: rows });
+});
+app.post('/api/admin/orders/act', requireAuth, requireAdmin, (req, res) => {
+  const { orderId, status } = req.body || {};
+  if (!orderId || !status) return fail(res, 400, 'orderId and status required');
+  db.prepare('UPDATE orders SET status = ? WHERE order_id = ?').run(status, orderId);
+  return ok(res, { ok: true });
+});
+app.get('/api/admin/stats', requireAuth, requireAdmin, (req, res) => {
+  const users = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+  const products = db.prepare('SELECT COUNT(*) AS c FROM products').get().c;
+  const orders = db.prepare('SELECT COUNT(*) AS c FROM orders').get().c;
+  const revenue = db.prepare("SELECT COALESCE(SUM(amount),0) AS total FROM orders WHERE status = 'completed'").get().total;
+  const pendingDeposits = db.prepare("SELECT COUNT(*) AS c FROM deposits WHERE status = 'pending'").get().c;
+  return ok(res, { users, products, orders, revenue: Number(revenue || 0), pendingDeposits });
 });
 
-app.post('/verify-nagad', async (req, res) => {
-  try {
-    const { trxId, amount } = req.body || {};
-    if (!trxId) return fail(res, 400, 'trxId is required');
-    const result = await verifyNagad(trxId, amount);
-    if (result.configured === false) return fail(res, 503, 'Nagad credentials not configured');
-    if (!result.verified) return fail(res, 400, result.reason || 'Verification failed');
-    return ok(res, { provider: 'nagad', trxId, amount: result.amount, status: result.status });
-  } catch (e) {
-    return fail(res, 500, e.message || 'Server error');
-  }
-});
+// Seed admin user
+const admin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@panelsell.store');
+if (!admin) {
+  const token = genToken();
+  db.prepare(`INSERT INTO users (name, email, password, role, session_token, session_expires) VALUES (?,?,?,'admin',?, strftime('%s','now') + 7*86400)`)
+    .run('Admin', 'admin@panelsell.store', hashPw('admin123'), token);
+  db.prepare(`INSERT OR IGNORE INTO wallets (user_email, balance) VALUES (?, 0)`).run('admin@panelsell.store');
+  console.log('Admin created: admin@panelsell.store / admin123');
+}
 
-app.listen(PORT, () => console.log(`Payment server listening on ${PORT}`));
+app.listen(PORT, () => console.log(`Panel Sell API listening on ${PORT}`));

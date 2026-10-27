@@ -1,5 +1,21 @@
+# Runtime data - do not commit
 .env
 .env.local
 data/
-*.log
+data/store.sqlite
+data/store.sqlite.bak*
+data/*.log
+data/*.bak*
+data/mail.log
+data/probe.log
+data/rupantor.log
+data/diag.log
+
+# OS
+.DS_Store
+Thumbs.db
+
 node_modules/
+config.js
+voted-polls.json
+set-secrets.js
